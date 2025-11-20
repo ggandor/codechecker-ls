@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "codechecker-ls"
+version = "0.0.1"
+license = "MIT"
+description = "Language server for CodeChecker."
+dependencies = [
+  "pygls==2.0.0",
+  "lsprotocol>=2025.0.0",
+]
+
+[project.scripts]
+codechecker-ls = "codechecker_ls.server:main"
