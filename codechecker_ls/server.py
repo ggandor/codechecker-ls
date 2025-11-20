@@ -10,6 +10,7 @@ import urllib.parse
 import uuid
 from enum import Enum
 from pathlib import PosixPath
+from signal import SIGTERM, SIGKILL
 from typing import Any, Callable, Generator, Optional, Type, TypeAlias, Union
 
 import attrs
@@ -180,6 +181,7 @@ def run_analyze(args) -> Generator[str, Signal, SuccStat]:
     stdout along the way.
     """
     with subprocess.Popen(['CodeChecker', 'analyze', *args],
+                          start_new_session=True,
                           stdout=subprocess.PIPE,
                           stderr=subprocess.STDOUT,
                           text=True) as proc:
@@ -207,8 +209,15 @@ def run_analyze(args) -> Generator[str, Signal, SuccStat]:
 
                 signal = yield  # type: ignore
                 if signal and (signal in Signal):
-                    proc.kill()
                     LOG.info("Killing `CodeChecker analyze`...")
+                    try:
+                        os.killpg(proc.pid, SIGTERM)
+                        try:
+                            proc.wait(timeout=10)
+                        except subprocess.TimeoutExpired:
+                            os.killpg(proc.pid, SIGKILL)
+                    except ProcessLookupError:
+                        pass
                     return (False, signal)
 
 
