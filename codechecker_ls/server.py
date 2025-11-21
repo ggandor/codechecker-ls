@@ -314,7 +314,7 @@ class CodeCheckerLanguageServer(LanguageServer):
             )
             if not success:
                 log_analyze_err(status)
-                if status in Signal:
+                if isinstance(status, Signal):
                     # HACK: This error will be handled silently by
                     # Neovim, so sending this on server shutdown too.
                     raise JsonRpcRequestCancelled
