@@ -35,6 +35,7 @@ from lsprotocol.types import (
 from pygls.cli import start_server
 from pygls.exceptions import (
     JsonRpcInternalError,
+    JsonRpcInvalidParams,
     JsonRpcRequestCancelled
 )
 from pygls.lsp.server import LanguageServer
@@ -138,8 +139,8 @@ def to_lsp_diagnostic(report) -> Diagnostic:
 
 
 # TODO: Make these configurable in `init_opts`.
-def get_default_paths(workspace_folder) -> tuple[str, str]:
-    codechecker_folder = os.path.join(workspace_folder, '.codechecker')
+def get_default_paths(workspace_root) -> tuple[str, str]:
+    codechecker_folder = os.path.join(workspace_root, '.codechecker')
     reports_path = os.path.join(codechecker_folder, 'reports')
     json_path = os.path.join(codechecker_folder, 'reports.json')
     return reports_path, json_path
@@ -335,9 +336,13 @@ class CodeCheckerLanguageServer(LanguageServer):
                 except json.JSONDecodeError:
                     LOG.info("Decoding " + json_path + " failed.")
 
-    def get_workspace_folder(self) -> str:
-        folders = list(self.workspace.folders.values())
-        return folders[0].name if folders else '.'
+    def get_workspace_root(self) -> str:
+        if self.workspace.root_uri:
+            return urllib.parse.urlparse(self.workspace.root_uri).path
+        elif self.workspace.folders:
+            return list(self.workspace.folders.values())[0].name
+        else:
+            raise JsonRpcInvalidParams("Workspace root cannot be inferred.")
 
     async def get_document_diagnostics(self, uri: Uri) -> list[Diagnostic]:
         """
@@ -345,8 +350,8 @@ class CodeCheckerLanguageServer(LanguageServer):
         results into JSON, and convert it to a single LSP document
         diagnostic report object.
         """
-        workspace_folder = self.get_workspace_folder()
-        reports_path, json_path = get_default_paths(workspace_folder)
+        workspace_root = self.get_workspace_root()
+        reports_path, json_path = get_default_paths(workspace_root)
         input_path = urllib.parse.urlparse(uri).path
 
         optional_args = INIT_OPTIONS.get('analyze_args', [])
@@ -365,9 +370,9 @@ class CodeCheckerLanguageServer(LanguageServer):
         Run `CodeChecker analyze`, parse the results into JSON, and
         convert it to a single LSP workspace diagnostic report object.
         """
-        workspace_folder = self.get_workspace_folder()
-        reports_path, json_path = get_default_paths(workspace_folder)
-        input_path = os.path.join(workspace_folder, 'compile_commands.json')
+        workspace_root = self.get_workspace_root()
+        reports_path, json_path = get_default_paths(workspace_root)
+        input_path = os.path.join(workspace_root, 'compile_commands.json')
 
         optional_args = analyze_args or INIT_OPTIONS.get('analyze_args', [])
         # Note: For single-file analysis, `--file foo` still works.
@@ -429,17 +434,15 @@ def shutdown(ls: CodeCheckerLanguageServer, *args) -> None:
 
 
 @SERVER.feature(INITIALIZE)
-def initialize(params: InitializeParams) -> None:
+def initialize(ls: CodeCheckerLanguageServer, params: InitializeParams) -> None:
     """LSP handler for `initialize` request."""
     init_opts: dict = params.initialization_options or {}
 
     for k, v in init_opts.items():
         INIT_OPTIONS[k] = v
 
-    default_log_path = os.path.join(
-        params.workspace_folders[0].name if params.workspace_folders else '.',
-        'codechecker_ls_log.txt'
-    )
+    default_log_path = os.path.join(ls.get_workspace_root(),
+                                    'codechecker_ls_log.txt')
     logging.basicConfig(
         level=logging.DEBUG,
         format='%(levelname)s: %(message)s',
