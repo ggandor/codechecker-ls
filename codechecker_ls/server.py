@@ -361,7 +361,9 @@ class CodeCheckerLanguageServer(LanguageServer):
         if not parsed:
             raise JsonRpcInternalError()
 
-        return [to_lsp_diagnostic(report) for report in parsed['reports']]
+        return [to_lsp_diagnostic(report) for report in parsed['reports']
+                # Safety measure if running without `--clean`.
+                if report['file']['original_path'] == input_path]
 
     async def get_workspace_diagnostics(
         self, analyze_args: list[str] = []
