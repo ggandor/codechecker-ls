@@ -12,5 +12,11 @@ dependencies = [
   "lsprotocol>=2025.0.0",
 ]
 
+[project.optional-dependencies]
+test = [
+  "pytest>=8.0",
+  "pytest-lsp>=1.0.0",
+]
+
 [project.scripts]
 codechecker-ls = "codechecker_ls.server:main"
