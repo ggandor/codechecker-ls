@@ -10,19 +10,27 @@ import urllib.parse
 import uuid
 from enum import Enum
 from pathlib import PosixPath
-from signal import SIGTERM, SIGKILL
+from signal import SIGKILL, SIGTERM
 from typing import Any, Callable, Generator, Optional, Type, TypeAlias, Union
 
 import attrs
-from lsprotocol import types
 from lsprotocol.types import (
     INITIALIZE,
     SHUTDOWN,
+    TEXT_DOCUMENT_DIAGNOSTIC,
+    TEXT_DOCUMENT_DID_OPEN,
+    TEXT_DOCUMENT_DID_SAVE,
+    WORKSPACE_DIAGNOSTIC,
     Diagnostic,
+    DiagnosticOptions,
     DiagnosticSeverity,
+    DidOpenTextDocumentParams,
+    DidSaveTextDocumentParams,
+    DocumentDiagnosticParams,
     FullDocumentDiagnosticReport,
     InitializeParams,
     Position,
+    PublishDiagnosticsParams,
     Range,
     WorkDoneProgressBegin,
     WorkDoneProgressEnd,
@@ -36,11 +44,10 @@ from pygls.cli import start_server
 from pygls.exceptions import (
     JsonRpcInternalError,
     JsonRpcInvalidParams,
-    JsonRpcRequestCancelled
+    JsonRpcRequestCancelled,
 )
 from pygls.lsp.server import LanguageServer
 from pygls.protocol import LanguageServerProtocol
-
 
 # -------------------
 # Types and constants
@@ -414,7 +421,7 @@ class CodeCheckerLanguageServer(LanguageServer):
         doc = self.workspace.get_text_document(uri)
         diags = await self.get_document_diagnostics(doc.uri)
         self.text_document_publish_diagnostics(
-            types.PublishDiagnosticsParams(
+            PublishDiagnosticsParams(
                 uri=doc.uri,
                 version=doc.version,
                 diagnostics=diags,
@@ -469,18 +476,18 @@ def initialize(ls: CodeCheckerLanguageServer, params: InitializeParams) -> None:
 
     if init_opts.get('publish_diagnostics'):
 
-        @SERVER.feature(types.TEXT_DOCUMENT_DID_OPEN)
+        @SERVER.feature(TEXT_DOCUMENT_DID_OPEN)
         async def did_open(
             ls: CodeCheckerLanguageServer,
-            params: types.DidOpenTextDocumentParams
+            params: DidOpenTextDocumentParams
         ) -> None:
             """LSP handler for `textDocument/didOpen` notification."""
             await ls.publish_diagnostics(params.text_document.uri)
 
-        @SERVER.feature(types.TEXT_DOCUMENT_DID_SAVE)
+        @SERVER.feature(TEXT_DOCUMENT_DID_SAVE)
         async def did_save(
             ls: CodeCheckerLanguageServer,
-            params: types.DidSaveTextDocumentParams
+            params: DidSaveTextDocumentParams
         ) -> None:
             """LSP handler for `textDocument/didSave` notification."""
             await ls.publish_diagnostics(params.text_document.uri)
@@ -494,22 +501,22 @@ def initialize(ls: CodeCheckerLanguageServer, params: InitializeParams) -> None:
         # fall on deaf ears).
 
         @SERVER.feature(
-            types.TEXT_DOCUMENT_DIAGNOSTIC,
-            types.DiagnosticOptions(
+            TEXT_DOCUMENT_DIAGNOSTIC,
+            DiagnosticOptions(
                 inter_file_dependencies=True,
                 workspace_diagnostics=True
-            ),
+            )
         )
         async def document_diagnostic(
             ls: CodeCheckerLanguageServer,
-            params: types.DocumentDiagnosticParams
+            params: DocumentDiagnosticParams
         ) -> FullDocumentDiagnosticReport:
             """LSP handler for `textDocument/diagnostic` request."""
             diags = await ls.get_document_diagnostics(params.text_document.uri)
             return FullDocumentDiagnosticReport(items=diags)
 
 
-        @SERVER.feature(types.WORKSPACE_DIAGNOSTIC)
+        @SERVER.feature(WORKSPACE_DIAGNOSTIC)
         async def workspace_diagnostic(
             ls: CodeCheckerLanguageServer,
             params: WorkspaceDiagnosticParams
@@ -524,8 +531,8 @@ def initialize(ls: CodeCheckerLanguageServer, params: InitializeParams) -> None:
         # `codechecker/diagnostic`, because for the moment there is no exposed
         # `workspace/diagnostic` handler.)
         @SERVER.feature(
-            types.TEXT_DOCUMENT_DIAGNOSTIC,
-            types.DiagnosticOptions(
+            TEXT_DOCUMENT_DIAGNOSTIC,
+            DiagnosticOptions(
                 inter_file_dependencies=True, workspace_diagnostics=True
             ),
         )
